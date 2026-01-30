@@ -100,48 +100,4 @@ impl HCBSController {
 
         self.last_update = std::time::Instant::now();
     }
-
-    // fn get_active_processes(&mut self) -> &[ProcessData] {
-    //     const UPDATE_DELTA: std::time::Duration = std::time::Duration::from_millis(1);
-
-    //     let now = std::time::Instant::now();
-    //     if now - self.last_update > UPDATE_DELTA {
-    //         self.update_active_processes();
-    //     }
-
-    //     &self.active_procs
-    // }
 }
-
-// fn get_processes(system: &mut sysinfo::System) -> (Vec<ProcessData>, Vec<sysinfo::Pid>) {
-//     use sysinfo::*;
-
-//     // Get all processes updates
-//     system.refresh_processes_specifics(
-//         ProcessesToUpdate::All,
-//         false,
-//         ProcessRefreshKind::nothing()
-//             .with_user(UpdateKind::Always));
-
-//     let (alive, dead): (Vec<_>, Vec<_>) =
-//         system.processes().iter()
-//         .map(|(_, p)| p)
-//         .partition(|p| p.exists());
-
-//     let alive = alive.into_iter()
-//         .map(|p| {
-//             ProcessData {
-//                 pid: p.pid(),
-//                 uid: p.user_id().unwrap().clone(),
-//                 gid: p.group_id().unwrap().clone(),
-//             }
-//         })
-//         .collect();
-
-//     let dead: Vec<_> = dead.iter().map(|p| p.pid()).collect();
-
-//     // Remove dead processes
-//     system.refresh_processes(ProcessesToUpdate::Some(&dead), true);
-
-//     (alive, dead)
-// }
