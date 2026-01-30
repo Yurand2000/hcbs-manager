@@ -1,16 +1,21 @@
-use std::collections::HashMap;
-
 use fuser::*;
-use crate::{ProcessStats, filesystem::VirtualFile};
+use std::collections::HashMap;
+use crate::ProcessStats;
 use crate::filesystem::utils::*;
-use crate::filesystem::process::ProcessFS;
+
+mod pid_dir;
+
+use pid_dir::*;
 
 #[derive(Debug, Clone)]
-pub struct RootFS<'a> {
+pub struct ProcDirFS<'a> {
     pub active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
+    pub parent_fs: ParentDirFS<'a>,
 }
 
-impl<'a> RootFS<'a> {
+impl<'a> ProcDirFS<'a> {
+    pub const NAME: &'static str = "proc";
+
     fn process_from_name(&'a self, name: &str) -> Option<(sysinfo::Pid, &'a ProcessStats)> {
         let pid = sysinfo::Pid::from_u32(name.parse::<u32>().ok()?);
         let stats = self.active_procs.get(&pid)?;
@@ -19,7 +24,7 @@ impl<'a> RootFS<'a> {
     }
 
     fn process_from_inode(&'a self, inode: u64) -> Option<(sysinfo::Pid, &'a ProcessStats)> {
-        let pid = inode_to_pid(inode)?;
+        let pid = inode_to_pid_dir(inode)?;
         let stats = self.active_procs.get(&pid)?;
 
         Some((pid, stats))
@@ -34,18 +39,18 @@ impl<'a> RootFS<'a> {
 
         self.process_from_name(name)
             .map(|(pid, stats)| -> Box<dyn VirtualFile + 'a> {
-                Box::new(ProcessFS::new(pid, stats, RootAsParentFS { root_fs: self }))
+                Box::new(PidDirFS::new(pid, stats, ParentDirFS::new(self)))
             })
     }
 
     fn fs_from_inode(&'a self, inode: u64) -> Option<Box<dyn VirtualFile + 'a>> {
-        if inode_refers_to_pid(inode) {
+        if inode != PROC_DIR_INODE {
             self.process_from_inode(inode)
                 .map(|(pid, stats)| -> Box<dyn VirtualFile + 'a> {
-                    Box::new(ProcessFS::new(pid, stats, RootAsParentFS { root_fs: self }))
+                    Box::new(PidDirFS::new(pid, stats, ParentDirFS::new(self)))
                 })
         } else {
-            match inode & RESERVED_INODE_MASK {
+            match inode & INODE_DIR_FILE_MASK {
                 0 => panic!("recursion"),
                 _ => None,
             }
@@ -62,7 +67,7 @@ impl<'a> RootFS<'a> {
     ) {
         if offset == 0 {
             let attr = self.attr();
-            if reply.add(attr.ino, (offset + 1) as i64, attr.kind, self.name()) {
+            if reply.add(attr.ino, (offset + 1) as i64, attr.kind, DIR_NAME_SELF) {
                 reply.ok();
                 return;
             }
@@ -70,24 +75,34 @@ impl<'a> RootFS<'a> {
             offset += 1;
         }
 
-        for (i, (&pid, stats)) in self.active_procs.iter().enumerate().skip((offset - 1) as usize) {
-            let offset = i + 1;
-            let proc = ProcessFS::new(pid, stats, RootAsParentFS { root_fs: self });
-            let attr = proc.attr();
+        if offset == 1 {
+            let attr = self.parent_fs.attr();
+            if reply.add(attr.ino, (offset + 1) as i64, attr.kind, DIR_NAME_PARENT) {
+                reply.ok();
+                return;
+            }
 
+            offset += 1;
+        }
+
+        for (i, (&pid, stats)) in self.active_procs.iter().enumerate().skip((offset - 2) as usize) {
+            let offset = i + 2;
+            let proc = PidDirFS::new(pid, stats, ParentDirFS::new(self));
+
+            let attr = proc.attr();
             if reply.add(attr.ino, (offset + 1) as i64, attr.kind, proc.name()) {
-                break;
+                reply.ok();
+                return;
             }
         }
 
         reply.ok();
-        return;
     }
 }
 
-impl Filesystem for RootFS<'_> {
+impl Filesystem for ProcDirFS<'_> {
     fn lookup(&mut self, _req: &Request<'_>, parent: u64, name: &std::ffi::OsStr, reply: ReplyEntry) {
-        if parent == ROOT_INODE {
+        if parent == PROC_DIR_INODE {
             if name == DIR_NAME_SELF {
                 reply.entry(&DEFAULT_TTL, &self.attr(), 0);
             } else {
@@ -105,7 +120,7 @@ impl Filesystem for RootFS<'_> {
     }
 
     fn getattr(&mut self, _req: &Request<'_>, ino: u64, fh: Option<u64>, reply: ReplyAttr) {
-        if ino == ROOT_INODE {
+        if ino == PROC_DIR_INODE {
             reply.attr(&DEFAULT_TTL, &self.attr());
         } else {
             let Some(mut file) = self.fs_from_inode(ino)
@@ -126,13 +141,35 @@ impl Filesystem for RootFS<'_> {
         lock_owner: Option<u64>,
         reply: ReplyData,
     ) {
-        if ino == ROOT_INODE {
+        if ino == PROC_DIR_INODE {
             reply.error(libc::EISDIR);
         } else {
             let Some(mut file) = self.fs_from_inode(ino)
                 else { reply.error(libc::ENOENT); return; };
 
             file.read(_req, ino, fh, offset, size, flags, lock_owner, reply);
+        }
+    }
+
+    fn write(
+        &mut self,
+        _req: &Request<'_>,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        data: &[u8],
+        write_flags: u32,
+        flags: i32,
+        lock_owner: Option<u64>,
+        reply: ReplyWrite,
+    ) {
+        if ino == PROC_DIR_INODE {
+            reply.error(libc::EISDIR);
+        } else {
+            let Some(mut file) = self.fs_from_inode(ino)
+                else { reply.error(libc::ENOENT); return; };
+
+            file.write(_req, ino, fh, offset, data, write_flags, flags, lock_owner, reply);
         }
     }
 
@@ -144,7 +181,7 @@ impl Filesystem for RootFS<'_> {
         offset: i64,
         reply: ReplyDirectory,
     ) {
-        if ino == ROOT_INODE {
+        if ino == PROC_DIR_INODE {
             self._readdir(_req, ino, fh, offset, reply);
         } else {
             let Some(mut file) = self.fs_from_inode(ino)
@@ -155,10 +192,14 @@ impl Filesystem for RootFS<'_> {
     }
 }
 
-impl VirtualFile for RootFS<'_> {
+impl VirtualFile for ProcDirFS<'_> {
+    fn inode(&self) -> u64 {
+        PROC_DIR_INODE
+    }
+
     fn attr(&self) -> FileAttr {
         FileAttr {
-            ino: ROOT_INODE,
+            ino: PROC_DIR_INODE,
             size: 0,
             blocks: 0,
             atime: UNKNOWN_TIME,
@@ -177,35 +218,6 @@ impl VirtualFile for RootFS<'_> {
     }
 
     fn name(&self) -> &str {
-        DIR_NAME_SELF
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RootAsParentFS<'a> {
-    pub root_fs: &'a RootFS<'a>,
-}
-
-impl<'a> RootAsParentFS<'a> {
-
-}
-
-impl Filesystem for RootAsParentFS<'_> {
-    fn lookup(&mut self, _req: &Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: ReplyEntry) {
-        reply.entry(&DEFAULT_TTL, &self.attr(), 0);
-    }
-
-    fn getattr(&mut self, _req: &Request<'_>, _ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
-        reply.attr(&DEFAULT_TTL, &self.attr());
-    }
-}
-
-impl VirtualFile for RootAsParentFS<'_> {
-    fn attr(&self) -> FileAttr {
-        self.root_fs.attr()
-    }
-
-    fn name(&self) -> &str {
-        panic!("unexpected")
+        Self::NAME
     }
 }

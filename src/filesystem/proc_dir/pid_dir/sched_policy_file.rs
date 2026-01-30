@@ -1,18 +1,18 @@
 use fuser::*;
-use crate::filesystem::{VirtualFile, utils::*};
+use crate::filesystem::utils::*;
 use crate::ProcessStats;
 
-pub struct CgroupFileFS<'a> {
+pub struct SchedPolicyFileFS<'a> {
     pub pid: sysinfo::Pid,
     pub stats: &'a ProcessStats,
 }
 
-impl CgroupFileFS<'_> {
-    pub const NAME: &'static str = "cgroup";
-    pub const INODE_OFFSET: u64 = 2;
+impl SchedPolicyFileFS<'_> {
+    pub const NAME: &'static str = "sched_policy";
+    pub const INODE_OFFSET: u64 = 3;
 }
 
-impl Filesystem for CgroupFileFS<'_> {
+impl Filesystem for SchedPolicyFileFS<'_> {
     fn lookup(&mut self, _req: &Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: ReplyEntry) {
         reply.entry(&DEFAULT_TTL, &self.attr(), 0);
     }
@@ -33,7 +33,11 @@ impl Filesystem for CgroupFileFS<'_> {
     }
 }
 
-impl VirtualFile for CgroupFileFS<'_> {
+impl VirtualFile for SchedPolicyFileFS<'_> {
+    fn inode(&self) -> u64 {
+        pid_to_dir_inode(self.pid) + Self::INODE_OFFSET
+    }
+
     fn attr(&self) -> FileAttr {
         let inode = pid_to_dir_inode(self.pid);
 
