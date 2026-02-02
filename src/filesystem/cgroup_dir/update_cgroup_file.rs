@@ -2,21 +2,21 @@ use fuser::*;
 use crate::filesystem::utils::*;
 
 #[derive(Debug, Clone)]
-pub struct UpdateCgroupFileFS<'a> {
-    pub parent_fs: ParentDirFS<'a>,
+pub struct UpdateCgroupFileFS {
+
 }
 
-impl<'a> UpdateCgroupFileFS<'a> {
+impl UpdateCgroupFileFS {
     pub const NAME: &'static str = "update";
     pub const INODE: u64 = CGROUP_DIR_INODE + 3;
 
 }
 
-impl Filesystem for UpdateCgroupFileFS<'_> {
+impl Filesystem for UpdateCgroupFileFS {
 
 }
 
-impl VirtualFile for UpdateCgroupFileFS<'_> {
+impl VirtualFile for UpdateCgroupFileFS {
     fn inode(&self) -> u64 {
         Self::INODE
     }

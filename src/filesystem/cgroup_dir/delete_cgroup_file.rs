@@ -2,21 +2,21 @@ use fuser::*;
 use crate::filesystem::utils::*;
 
 #[derive(Debug, Clone)]
-pub struct DeleteCgroupFileFS<'a> {
-    pub parent_fs: ParentDirFS<'a>,
+pub struct DeleteCgroupFileFS {
+
 }
 
-impl<'a> DeleteCgroupFileFS<'a> {
+impl DeleteCgroupFileFS {
     pub const NAME: &'static str = "delete";
     pub const INODE: u64 = CGROUP_DIR_INODE + 2;
 
 }
 
-impl Filesystem for DeleteCgroupFileFS<'_> {
+impl Filesystem for DeleteCgroupFileFS {
 
 }
 
-impl VirtualFile for DeleteCgroupFileFS<'_> {
+impl VirtualFile for DeleteCgroupFileFS {
     fn inode(&self) -> u64 {
         Self::INODE
     }

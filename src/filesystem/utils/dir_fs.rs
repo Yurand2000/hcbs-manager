@@ -3,14 +3,14 @@ use super::*;
 
 #[derive(Debug, Clone)]
 pub struct DirFS<'a, T>
-    where T: DirFSInterface<'a>
+    where T: DirFSInterface
 {
-    implementor: T,
-    parent_fs: ParentDirFS<'a>,
+    pub implementor: T,
+    pub parent_fs: ParentDirFS<'a>,
 }
 
 impl<'a, T> DirFS<'a, T>
-    where T: DirFSInterface<'a>
+    where T: DirFSInterface
 {
     fn _readdir(
         &mut self,
@@ -40,8 +40,10 @@ impl<'a, T> DirFS<'a, T>
             offset += 1;
         }
 
-        for (i, (attr, name)) in self.implementor.readdir_files().enumerate().skip((offset - 2) as usize) {
+        for (i, file) in self.implementor.readdir_files().enumerate().skip((offset - 2) as usize) {
             let offset = i + 2;
+            let attr = file.attr();
+            let name = file.name();
 
             if reply.add(attr.ino, (offset + 1) as i64, attr.kind, name) {
                 reply.ok();
@@ -53,37 +55,25 @@ impl<'a, T> DirFS<'a, T>
     }
 }
 
-pub trait DirFSInterface<'a> {
+pub trait DirFSInterface {
     fn inode(&self) -> u64;
     fn attr(&self) -> FileAttr;
     fn name(&self) -> &str;
 
-    fn fs_from_file_name(&self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFile + 'a>> {
-        if name == DIR_NAME_SELF {
-            panic!("recursion");
-        } else {
-            None
-        }
-    }
-
-    fn fs_from_inode(&self, inode: u64) -> Option<Box<dyn VirtualFile + 'a>> {
-        if inode == self.attr().ino {
-            panic!("recursion");
-        } else {
-            None
-        }
-    }
-
-    fn readdir_files(&self) -> impl Iterator<Item = (FileAttr, &str)>;
+    fn fs_from_file_name(&self, _name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFile>> { None }
+    fn fs_from_inode(&self, _inode: u64) -> Option<Box<dyn VirtualFile>> { None }
+    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFile>>;
 }
 
 impl<'a, T> Filesystem for DirFS<'a, T>
-    where T: DirFSInterface<'a>
+    where T: DirFSInterface
 {
     fn lookup(&mut self, _req: &Request<'_>, parent: u64, name: &std::ffi::OsStr, reply: ReplyEntry) {
         if parent == self.implementor.inode() {
             if name == DIR_NAME_SELF {
                 reply.entry(&DEFAULT_TTL, &self.attr(), 0);
+            } else if name == DIR_NAME_PARENT {
+                reply.entry(&DEFAULT_TTL, &self.parent_fs.attr(), 0);
             } else {
                 let Some(file) = self.implementor.fs_from_file_name(name)
                     else { reply.error(libc::ENOENT); return; };
@@ -172,7 +162,7 @@ impl<'a, T> Filesystem for DirFS<'a, T>
 }
 
 impl<'a, T> VirtualFile for DirFS<'a, T>
-    where T: DirFSInterface<'a>
+    where T: DirFSInterface
 {
     fn inode(&self) -> u64 {
         self.implementor.inode()

@@ -86,7 +86,7 @@ impl<'a> RootFS<'a> {
         match name.to_str().unwrap() {
             DIR_NAME_SELF => panic!("recursion"),
             ProcDirFS::NAME => Some(Box::new(ProcDirFS { active_procs: self.active_procs, parent_fs: ParentDirFS::new(self) })),
-            CgroupDirFS::NAME => Some(Box::new(CgroupDirFS { parent_fs: ParentDirFS::new(self) })),
+            CgroupDirFS::NAME => Some(Box::new(CgroupDirFS::new(ParentDirFS::new(self)))),
             _ => None,
         }
     }
@@ -99,7 +99,7 @@ impl<'a> RootFS<'a> {
                 _ => None,
             },
             PROC_DIR_INODE => Some(Box::new(ProcDirFS { active_procs: self.active_procs, parent_fs: ParentDirFS::new(self) })),
-            CGROUP_DIR_INODE => Some(Box::new(CgroupDirFS { parent_fs: ParentDirFS::new(self) })),
+            CGROUP_DIR_INODE => Some(Box::new(CgroupDirFS::new(ParentDirFS::new(self)))),
             _ => None,
         }
     }
@@ -134,7 +134,7 @@ impl<'a> RootFS<'a> {
         }
 
         if offset == 2 {
-            let cgroup = CgroupDirFS { parent_fs: ParentDirFS::new(self) };
+            let cgroup = CgroupDirFS::new(ParentDirFS::new(self));
             let attr = cgroup.attr();
             if reply.add(attr.ino, (offset + 1) as i64, attr.kind, cgroup.name()) {
                 reply.ok();

@@ -2,21 +2,20 @@ use fuser::*;
 use crate::filesystem::utils::*;
 
 #[derive(Debug, Clone)]
-pub struct CreateCgroupFileFS<'a> {
-    pub parent_fs: ParentDirFS<'a>,
+pub struct CreateCgroupFileFS {
+
 }
 
-impl<'a> CreateCgroupFileFS<'a> {
+impl CreateCgroupFileFS {
     pub const NAME: &'static str = "create";
     pub const INODE: u64 = CGROUP_DIR_INODE + 1;
+}
+
+impl Filesystem for CreateCgroupFileFS {
 
 }
 
-impl Filesystem for CreateCgroupFileFS<'_> {
-
-}
-
-impl VirtualFile for CreateCgroupFileFS<'_> {
+impl VirtualFile for CreateCgroupFileFS {
     fn inode(&self) -> u64 {
         Self::INODE
     }
