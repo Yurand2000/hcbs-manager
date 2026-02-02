@@ -11,6 +11,8 @@ impl CreateCgroupFileFS {
     pub const INODE: u64 = CGROUP_DIR_INODE + 1;
 }
 
+impl VirtualFS for CreateCgroupFileFS { }
+
 impl Filesystem for CreateCgroupFileFS {
 
 }

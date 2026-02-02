@@ -26,6 +26,36 @@ impl CgroupDirFS {
 }
 
 impl DirFSInterface for CgroupDirFS {
+    fn fs_from_file_name<'a>(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
+        match name.to_str().unwrap() {
+            CreateCgroupFileFS::NAME => Some(Box::new(CreateCgroupFileFS { })),
+            DeleteCgroupFileFS::NAME => Some(Box::new(DeleteCgroupFileFS { })),
+            UpdateCgroupFileFS::NAME => Some(Box::new(UpdateCgroupFileFS { })),
+            _ => None,
+        }
+    }
+
+    fn fs_from_inode<'a>(&'a self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
+        match inode {
+            CreateCgroupFileFS::INODE => Some(Box::new(CreateCgroupFileFS { })),
+            DeleteCgroupFileFS::INODE => Some(Box::new(DeleteCgroupFileFS { })),
+            UpdateCgroupFileFS::INODE => Some(Box::new(UpdateCgroupFileFS { })),
+            _ => None,
+        }
+    }
+
+    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>> {
+        let files: [Box<dyn VirtualFS>; _] = [
+            Box::new(CreateCgroupFileFS { }),
+            Box::new(DeleteCgroupFileFS { }),
+            Box::new(UpdateCgroupFileFS { })
+        ];
+
+        files.into_iter()
+    }
+}
+
+impl VirtualFile for CgroupDirFS {
     fn inode(&self) -> u64 {
         CGROUP_DIR_INODE
     }
@@ -52,33 +82,5 @@ impl DirFSInterface for CgroupDirFS {
 
     fn name(&self) -> &str {
         Self::NAME
-    }
-
-    fn fs_from_file_name(&self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFile>> {
-        match name.to_str().unwrap() {
-            CreateCgroupFileFS::NAME => Some(Box::new(CreateCgroupFileFS { })),
-            DeleteCgroupFileFS::NAME => Some(Box::new(DeleteCgroupFileFS { })),
-            UpdateCgroupFileFS::NAME => Some(Box::new(UpdateCgroupFileFS { })),
-            _ => None,
-        }
-    }
-
-    fn fs_from_inode(&self, inode: u64) -> Option<Box<dyn VirtualFile>> {
-        match inode {
-            CreateCgroupFileFS::INODE => Some(Box::new(CreateCgroupFileFS { })),
-            DeleteCgroupFileFS::INODE => Some(Box::new(DeleteCgroupFileFS { })),
-            UpdateCgroupFileFS::INODE => Some(Box::new(UpdateCgroupFileFS { })),
-            _ => None,
-        }
-    }
-
-    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFile>> {
-        let files: [Box<dyn VirtualFile>; _] = [
-            Box::new(CreateCgroupFileFS { }),
-            Box::new(DeleteCgroupFileFS { }),
-            Box::new(UpdateCgroupFileFS { })
-        ];
-
-        files.into_iter()
     }
 }

@@ -12,6 +12,8 @@ impl UpdateCgroupFileFS {
 
 }
 
+impl VirtualFS for UpdateCgroupFileFS { }
+
 impl Filesystem for UpdateCgroupFileFS {
 
 }

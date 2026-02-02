@@ -9,12 +9,18 @@ use pid_dir::*;
 
 #[derive(Debug, Clone)]
 pub struct ProcDirFS<'a> {
-    pub active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
-    pub parent_fs: ParentDirFS<'a>,
+    active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
 }
 
 impl<'a> ProcDirFS<'a> {
     pub const NAME: &'static str = "proc";
+
+    pub fn new(active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>, parent_fs: ParentDirFS<'a>) -> DirFS<'a, Self> {
+        DirFS {
+            implementor: Self { active_procs },
+            parent_fs,
+        }
+    }
 
     fn process_from_name(&'a self, name: &str) -> Option<(sysinfo::Pid, &'a ProcessStats)> {
         let pid = sysinfo::Pid::from_u32(name.parse::<u32>().ok()?);
@@ -29,24 +35,20 @@ impl<'a> ProcDirFS<'a> {
 
         Some((pid, stats))
     }
+}
 
-    fn fs_from_file_name(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFile + 'a>> {
-        let name = name.to_str().unwrap();
-
-        if name == DIR_NAME_SELF {
-            panic!("recursion");
-        }
-
-        self.process_from_name(name)
-            .map(|(pid, stats)| -> Box<dyn VirtualFile + 'a> {
+impl DirFSInterface for ProcDirFS<'_> {
+    fn fs_from_file_name<'a>(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
+        self.process_from_name(name.to_str().unwrap())
+            .map(|(pid, stats)| -> Box<dyn VirtualFS> {
                 Box::new(PidDirFS::new(pid, stats, ParentDirFS::new(self)))
             })
     }
 
-    fn fs_from_inode(&'a self, inode: u64) -> Option<Box<dyn VirtualFile + 'a>> {
+    fn fs_from_inode<'a>(&'a self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
         if inode != PROC_DIR_INODE {
             self.process_from_inode(inode)
-                .map(|(pid, stats)| -> Box<dyn VirtualFile + 'a> {
+                .map(|(pid, stats)| -> Box<dyn VirtualFS + 'a> {
                     Box::new(PidDirFS::new(pid, stats, ParentDirFS::new(self)))
                 })
         } else {
@@ -57,142 +59,15 @@ impl<'a> ProcDirFS<'a> {
         }
     }
 
-    fn _readdir(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        _fh: u64,
-        mut offset: i64,
-        mut reply: ReplyDirectory,
-    ) {
-        if offset == 0 {
-            let attr = self.attr();
-            if reply.add(attr.ino, (offset + 1) as i64, attr.kind, DIR_NAME_SELF) {
-                reply.ok();
-                return;
-            }
-
-            offset += 1;
-        }
-
-        if offset == 1 {
-            let attr = self.parent_fs.attr();
-            if reply.add(attr.ino, (offset + 1) as i64, attr.kind, DIR_NAME_PARENT) {
-                reply.ok();
-                return;
-            }
-
-            offset += 1;
-        }
-
-        for (i, (&pid, stats)) in self.active_procs.iter().enumerate().skip((offset - 2) as usize) {
-            let offset = i + 2;
-            let proc = PidDirFS::new(pid, stats, ParentDirFS::new(self));
-
-            let attr = proc.attr();
-            if reply.add(attr.ino, (offset + 1) as i64, attr.kind, proc.name()) {
-                reply.ok();
-                return;
-            }
-        }
-
-        reply.ok();
+    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>> {
+        self.active_procs.iter()
+            .map(|(&pid, stats)| -> Box<dyn VirtualFS + 'a> {
+                Box::new(PidDirFS::new(pid, stats, ParentDirFS::new(self)))
+            })
     }
 }
 
-impl Filesystem for ProcDirFS<'_> {
-    fn lookup(&mut self, _req: &Request<'_>, parent: u64, name: &std::ffi::OsStr, reply: ReplyEntry) {
-        if parent == PROC_DIR_INODE {
-            if name == DIR_NAME_SELF {
-                reply.entry(&DEFAULT_TTL, &self.attr(), 0);
-            } else {
-                let Some(file) = self.fs_from_file_name(name)
-                    else { reply.error(libc::ENOENT); return; };
-
-                reply.entry(&DEFAULT_TTL, &file.attr(), 0);
-            }
-        } else {
-            let Some(mut file) = self.fs_from_inode(parent)
-                else { reply.error(libc::ENOENT); return; };
-
-            file.lookup(_req, parent, name, reply);
-        }
-    }
-
-    fn getattr(&mut self, _req: &Request<'_>, ino: u64, fh: Option<u64>, reply: ReplyAttr) {
-        if ino == PROC_DIR_INODE {
-            reply.attr(&DEFAULT_TTL, &self.attr());
-        } else {
-            let Some(mut file) = self.fs_from_inode(ino)
-                else { reply.error(libc::ENOENT); return; };
-
-            file.getattr(_req, ino, fh, reply);
-        }
-    }
-
-    fn read(
-        &mut self,
-        _req: &Request<'_>,
-        ino: u64,
-        fh: u64,
-        offset: i64,
-        size: u32,
-        flags: i32,
-        lock_owner: Option<u64>,
-        reply: ReplyData,
-    ) {
-        if ino == PROC_DIR_INODE {
-            reply.error(libc::EISDIR);
-        } else {
-            let Some(mut file) = self.fs_from_inode(ino)
-                else { reply.error(libc::ENOENT); return; };
-
-            file.read(_req, ino, fh, offset, size, flags, lock_owner, reply);
-        }
-    }
-
-    fn write(
-        &mut self,
-        _req: &Request<'_>,
-        ino: u64,
-        fh: u64,
-        offset: i64,
-        data: &[u8],
-        write_flags: u32,
-        flags: i32,
-        lock_owner: Option<u64>,
-        reply: ReplyWrite,
-    ) {
-        if ino == PROC_DIR_INODE {
-            reply.error(libc::EISDIR);
-        } else {
-            let Some(mut file) = self.fs_from_inode(ino)
-                else { reply.error(libc::ENOENT); return; };
-
-            file.write(_req, ino, fh, offset, data, write_flags, flags, lock_owner, reply);
-        }
-    }
-
-    fn readdir(
-        &mut self,
-        _req: &Request<'_>,
-        ino: u64,
-        fh: u64,
-        offset: i64,
-        reply: ReplyDirectory,
-    ) {
-        if ino == PROC_DIR_INODE {
-            self._readdir(_req, ino, fh, offset, reply);
-        } else {
-            let Some(mut file) = self.fs_from_inode(ino)
-                else { reply.error(libc::ENOENT); return; };
-
-            file.readdir(_req, ino, fh, offset, reply);
-        }
-    }
-}
-
-impl VirtualFile for ProcDirFS<'_> {
+impl<'a> VirtualFile for ProcDirFS<'a> {
     fn inode(&self) -> u64 {
         PROC_DIR_INODE
     }

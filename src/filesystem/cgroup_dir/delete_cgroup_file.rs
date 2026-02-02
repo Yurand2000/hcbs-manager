@@ -12,6 +12,8 @@ impl DeleteCgroupFileFS {
 
 }
 
+impl VirtualFS for DeleteCgroupFileFS { }
+
 impl Filesystem for DeleteCgroupFileFS {
 
 }

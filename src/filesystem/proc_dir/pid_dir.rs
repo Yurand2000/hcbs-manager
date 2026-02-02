@@ -21,7 +21,7 @@ impl<'a> PidDirFS<'a> {
         Self { pid, stats, parent_fs, name: format!("{}", pid) }
     }
 
-    fn fs_from_file_name(&self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFile + 'a>> {
+    fn fs_from_file_name(&self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
         match name.to_str().unwrap() {
             DIR_NAME_SELF => panic!("recursion"),
             DIR_NAME_PARENT => Some(Box::new(self.parent_fs.clone())),
@@ -31,7 +31,7 @@ impl<'a> PidDirFS<'a> {
         }
     }
 
-    fn fs_from_inode(&self, inode: u64) -> Option<Box<dyn VirtualFile + 'a>> {
+    fn fs_from_inode(&self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
         if !inode_is_pid(inode) {
             return None;
         }
@@ -85,6 +85,8 @@ impl<'a> PidDirFS<'a> {
         reply.ok();
     }
 }
+
+impl VirtualFS for PidDirFS<'_> { }
 
 impl Filesystem for PidDirFS<'_> {
     fn lookup(&mut self, _req: &Request<'_>, parent: u64, name: &std::ffi::OsStr, reply: ReplyEntry) {

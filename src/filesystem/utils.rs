@@ -6,10 +6,13 @@ pub mod dir_fs;
 pub use parent_dir_fs::ParentDirFS;
 pub use dir_fs::{
     DirFS,
+    DirNoParentFS,
     DirFSInterface,
 };
 
-pub trait VirtualFile: Filesystem {
+pub trait VirtualFS: VirtualFile + Filesystem { }
+
+pub trait VirtualFile {
     fn inode(&self) -> u64;
     fn attr(&self) -> FileAttr;
     fn name(&self) -> &str;

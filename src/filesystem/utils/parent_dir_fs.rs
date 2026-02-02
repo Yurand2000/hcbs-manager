@@ -3,8 +3,8 @@ use super::*;
 
 #[derive(Debug, Clone)]
 pub struct ParentDirFS<'a> {
-    attr: FileAttr,
-    name: &'a str,
+    pub attr: FileAttr,
+    pub name: &'a str,
 }
 
 impl<'a> ParentDirFS<'a> {
@@ -12,6 +12,8 @@ impl<'a> ParentDirFS<'a> {
         Self { attr: dir.attr(), name: dir.name() }
     }
 }
+
+impl VirtualFS for ParentDirFS<'_> { }
 
 impl Filesystem for ParentDirFS<'_> {
     fn lookup(&mut self, _req: &Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: ReplyEntry) {

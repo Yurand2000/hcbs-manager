@@ -12,6 +12,8 @@ impl CgroupFileFS<'_> {
     pub const INODE_OFFSET: u64 = 2;
 }
 
+impl VirtualFS for CgroupFileFS<'_> { }
+
 impl Filesystem for CgroupFileFS<'_> {
     fn lookup(&mut self, _req: &Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: ReplyEntry) {
         reply.entry(&DEFAULT_TTL, &self.attr(), 0);

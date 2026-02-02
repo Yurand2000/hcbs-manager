@@ -12,6 +12,8 @@ impl SchedPolicyFileFS<'_> {
     pub const INODE_OFFSET: u64 = 3;
 }
 
+impl VirtualFS for SchedPolicyFileFS<'_> { }
+
 impl Filesystem for SchedPolicyFileFS<'_> {
     fn lookup(&mut self, _req: &Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: ReplyEntry) {
         reply.entry(&DEFAULT_TTL, &self.attr(), 0);
