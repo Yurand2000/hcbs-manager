@@ -9,23 +9,26 @@ use create_cgroup_file::*;
 use update_cgroup_file::*;
 use delete_cgroup_file::*;
 
-#[derive(Debug, Clone)]
-pub struct CgroupDirFS {
-
+#[derive(Debug)]
+pub struct CgroupDirFS<'a> {
+    cgroup_manager: &'a mut crate::manager::CgroupManager,
 }
 
-impl CgroupDirFS {
+impl<'a> CgroupDirFS<'a> {
     pub const NAME: &'static str = "cgroup";
 
-    pub fn new<'a>(parent_fs: ParentDirFS<'a>) -> DirFS<'a, Self> {
+    pub fn new(
+        cgroup_manager: &'a mut crate::manager::CgroupManager,
+        parent_fs: ParentDirFS<'a>
+    ) -> DirFS<'a, Self> {
         DirFS {
-            implementor: Self { },
+            implementor: Self { cgroup_manager },
             parent_fs,
         }
     }
 }
 
-impl DirFSInterface for CgroupDirFS {
+impl DirFSInterface for CgroupDirFS<'_> {
     fn fs_from_file_name<'a>(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
         match name.to_str().unwrap() {
             CreateCgroupFileFS::NAME => Some(Box::new(CreateCgroupFileFS { })),
@@ -55,7 +58,7 @@ impl DirFSInterface for CgroupDirFS {
     }
 }
 
-impl VirtualFile for CgroupDirFS {
+impl VirtualFile for CgroupDirFS<'_> {
     fn inode(&self) -> u64 {
         CGROUP_DIR_INODE
     }

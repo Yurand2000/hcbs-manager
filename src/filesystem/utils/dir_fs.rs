@@ -2,9 +2,9 @@ use fuser::*;
 use super::*;
 
 pub trait DirFSInterface: VirtualFile {
-    fn fs_from_file_name<'a>(&'a self, _name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> { None }
-    fn fs_from_inode<'a>(&'a self, _inode: u64) -> Option<Box<dyn VirtualFS + 'a>> { None }
-    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>>;
+    fn fs_from_file_name<'a>(&'a mut self, _name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> { None }
+    fn fs_from_inode<'a>(&'a mut self, _inode: u64) -> Option<Box<dyn VirtualFS + 'a>> { None }
+    fn readdir_files<'a>(&'a mut self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>>;
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +95,34 @@ impl<'a, T> Filesystem for DirFS<'a, T>
                 else { reply.error(libc::ENOENT); return; };
 
             file.getattr(_req, ino, fh, reply);
+        }
+    }
+
+    fn setattr(
+        &mut self,
+        _req: &Request<'_>,
+        ino: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        _atime: Option<TimeOrNow>,
+        _mtime: Option<TimeOrNow>,
+        _ctime: Option<std::time::SystemTime>,
+        fh: Option<u64>,
+        _crtime: Option<std::time::SystemTime>,
+        _chgtime: Option<std::time::SystemTime>,
+        _bkuptime: Option<std::time::SystemTime>,
+        flags: Option<u32>,
+        reply: ReplyAttr,
+    ) {
+        if ino == self.inode() {
+            reply.error(libc::ENOSYS);
+        } else {
+            let Some(mut file) = self.implementor.fs_from_inode(ino)
+                else { reply.error(libc::ENOENT); return; };
+
+            file.setattr(_req, ino, mode, uid, gid, size, _atime, _mtime, _ctime, fh, _crtime, _chgtime, _bkuptime, flags, reply);
         }
     }
 
@@ -251,6 +279,34 @@ impl<T> Filesystem for DirNoParentFS<T>
                 else { reply.error(libc::ENOENT); return; };
 
             file.getattr(_req, ino, fh, reply);
+        }
+    }
+
+    fn setattr(
+        &mut self,
+        _req: &Request<'_>,
+        ino: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        _atime: Option<TimeOrNow>,
+        _mtime: Option<TimeOrNow>,
+        _ctime: Option<std::time::SystemTime>,
+        fh: Option<u64>,
+        _crtime: Option<std::time::SystemTime>,
+        _chgtime: Option<std::time::SystemTime>,
+        _bkuptime: Option<std::time::SystemTime>,
+        flags: Option<u32>,
+        reply: ReplyAttr,
+    ) {
+        if ino == self.inode() {
+            reply.error(libc::ENOSYS);
+        } else {
+            let Some(mut file) = self.implementor.fs_from_inode(ino)
+                else { reply.error(libc::ENOENT); return; };
+
+            file.setattr(_req, ino, mode, uid, gid, size, _atime, _mtime, _ctime, fh, _crtime, _chgtime, _bkuptime, flags, reply);
         }
     }
 

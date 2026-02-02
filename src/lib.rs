@@ -4,6 +4,7 @@ use std::collections::HashMap;
 extern crate log;
 
 mod filesystem;
+mod manager;
 
 pub mod prelude {
     pub use super::{
@@ -16,6 +17,7 @@ pub struct HCBSController {
     sysinfo: sysinfo::System,
     mountpoint: &'static str,
     active_procs: HashMap<sysinfo::Pid, ProcessStats>,
+    cgroup_manager: manager::CgroupManager,
     last_update: std::time::Instant,
 }
 
@@ -32,6 +34,7 @@ impl HCBSController {
             sysinfo: sysinfo::System::new(),
             mountpoint: "/hcbs-manager",
             active_procs: HashMap::with_capacity(0),
+            cgroup_manager: manager::CgroupManager::new(),
             last_update: std::time::Instant::now(),
         };
 
