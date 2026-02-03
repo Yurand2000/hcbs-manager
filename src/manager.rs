@@ -87,8 +87,10 @@ impl Cgroup {
     pub fn create(name: &str, reservation: Reservation) -> anyhow::Result<()> {
         create_cgroup(name)?;
 
-        set_cgroup_period_us(name, reservation.period_us)?;
-        set_cgroup_runtime_us(name, reservation.runtime_us)?;
+        set_cgroup_period_us(name, reservation.period_us)
+            .and_then(|_| set_cgroup_runtime_us(name, reservation.runtime_us))
+            .map_err(|err| { if let Err(err) = delete_cgroup(name) { err } else { err } })?;
+
         Ok(())
     }
 

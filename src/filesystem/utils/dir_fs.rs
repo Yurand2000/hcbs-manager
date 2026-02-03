@@ -55,9 +55,9 @@ impl<T> DirFS<T>
             _ => (),
         };
 
-        let inodes: Vec<_> = self.implementor.fs_inodes_in_dir()
+        let inodes: Vec<_> = self.implementor.fs_inodes_in_dir().enumerate()
                                 .skip(offset as usize - dirs_offset).collect();
-        for (i, inode) in inodes.into_iter().enumerate() {
+        for (i, inode) in inodes.into_iter() {
             let offset = i + dirs_offset;
             let Some(file) = self.implementor.fs_from_inode(inode)
                 else { continue; };
