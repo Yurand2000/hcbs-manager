@@ -12,3 +12,4 @@ libc = "0.2.180"
 log = "0.4.29"
 sysinfo = "0.38.0"
 hcbs-utils = { git = "https://github.com/Yurand2000/hcbs-utils.git", features = ["cgroup_v2"] }
+nom = "8.0.0"

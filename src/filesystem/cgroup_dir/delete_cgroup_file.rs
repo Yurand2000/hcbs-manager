@@ -1,24 +1,39 @@
 use fuser::*;
 use crate::filesystem::utils::*;
 
-#[derive(Debug, Clone)]
-pub struct DeleteCgroupFileFS {
-
+#[derive(Debug)]
+pub struct DeleteCgroupFileFS<'a> {
+    cgroup_manager: &'a mut crate::manager::CgroupManager,
 }
 
-impl DeleteCgroupFileFS {
+impl<'a> DeleteCgroupFileFS<'a> {
     pub const NAME: &'static str = "delete";
     pub const INODE: u64 = CGROUP_DIR_INODE + 2;
 
+    pub fn new(cgroup_manager: &'a mut crate::manager::CgroupManager) -> FileFS<Self> {
+        FileFS::new( Self { cgroup_manager } )
+    }
+
+    fn parse_request(data: &str) -> Option<&str> {
+        crate::filesystem::utils::
+            parser::parse_cgroup_name(data).map(|(_, res)| res).ok()
+    }
 }
 
-impl VirtualFS for DeleteCgroupFileFS { }
+impl FileFSInterface for DeleteCgroupFileFS<'_> {
+    fn read_size(&self) -> anyhow::Result<usize> { anyhow::bail!("Cannot read from DeleteCgroupFile") }
 
-impl Filesystem for DeleteCgroupFileFS {
+    fn read_data(&self) -> anyhow::Result<&str> { anyhow::bail!("Cannot read from DeleteCgroupFile") }
 
+    fn write_data(&mut self, data: &str) -> anyhow::Result<()> {
+        let Some(name) = Self::parse_request(data)
+            else { anyhow::bail!("Invalid request"); };
+
+        self.cgroup_manager.destroy_cgroup(name)
+    }
 }
 
-impl VirtualFile for DeleteCgroupFileFS {
+impl VirtualFile for DeleteCgroupFileFS<'_> {
     fn inode(&self) -> u64 {
         Self::INODE
     }

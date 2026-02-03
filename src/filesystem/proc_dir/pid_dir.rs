@@ -10,49 +10,54 @@ use sched_policy_file::*;
 
 #[derive(Debug, Clone)]
 pub struct PidDirFS<'a> {
-    pub pid: sysinfo::Pid,
-    pub stats: &'a ProcessStats,
-    pub name: String,
+    pid: sysinfo::Pid,
+    stats: &'a ProcessStats,
+    name: String,
+    cgroup_manager: &'a crate::manager::CgroupManager,
+    proc_dir: &'a super::ProcDirFS<'a>,
 }
 
 impl<'a> PidDirFS<'a> {
-    pub fn new(pid: sysinfo::Pid, stats: &'a ProcessStats, parent_fs: ParentDirFS<'a>) -> DirFS<'a, Self> {
-        DirFS {
-            implementor: Self { pid, stats, name: format!("{}", pid) },
-            parent_fs,
-        }
+    pub fn new(
+        pid: sysinfo::Pid,
+        stats: &'a ProcessStats,
+        proc_dir: &'a super::ProcDirFS<'a>
+    ) -> DirFS<Self> {
+        DirFS::new( Self { pid, stats, name: format!("{}", pid), cgroup_manager: proc_dir.cgroup_manager, proc_dir } )
     }
 }
 
 impl DirFSInterface for PidDirFS<'_> {
-    fn fs_from_file_name<'a>(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
+    fn parent_attr(&self) -> Option<FileAttr> {
+        Some(self.proc_dir.attr())
+    }
+
+    fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
         match name.to_str().unwrap() {
-            CgroupFileFS::NAME => Some(Box::new(CgroupFileFS { pid: self.pid, stats: self.stats })),
-            SchedPolicyFileFS::NAME => Some(Box::new(SchedPolicyFileFS { pid: self.pid, stats: self.stats })),
+            CgroupFileFS::NAME => Some(Box::new(CgroupFileFS::new(self))),
+            SchedPolicyFileFS::NAME => Some(Box::new(SchedPolicyFileFS::new(self))),
             _ => None,
         }
     }
 
-    fn fs_from_inode<'a>(&'a self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
+    fn fs_from_inode<'a>(&'a mut self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
         if !inode_is_pid(inode) {
             return None;
         }
 
         match inode & INODE_DIR_FILE_MASK {
             0 => panic!("recursion"),
-            CgroupFileFS::INODE_OFFSET => Some(Box::new(CgroupFileFS { pid: self.pid, stats: self.stats })),
-            SchedPolicyFileFS::INODE_OFFSET => Some(Box::new(SchedPolicyFileFS { pid: self.pid, stats: self.stats })),
+            CgroupFileFS::INODE_OFFSET => Some(Box::new(CgroupFileFS::new(self))),
+            SchedPolicyFileFS::INODE_OFFSET => Some(Box::new(SchedPolicyFileFS::new(self))),
             _ => None,
         }
     }
 
-    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>> {
-        let files: [Box<dyn VirtualFS>; _] = [
-            Box::new(CgroupFileFS { pid: self.pid, stats: self.stats }),
-            Box::new(SchedPolicyFileFS { pid: self.pid, stats: self.stats }),
-        ];
-
-        files.into_iter()
+    fn fs_inodes_in_dir(&self) -> impl Iterator<Item = u64> {
+        [
+            CgroupFileFS::INODE_OFFSET,
+            SchedPolicyFileFS::INODE_OFFSET,
+        ].into_iter().map(|offset| self.inode() + offset)
     }
 }
 

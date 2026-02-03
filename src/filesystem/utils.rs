@@ -1,13 +1,17 @@
 use fuser::*;
 
-pub mod parent_dir_fs;
 pub mod dir_fs;
+pub mod file_fs;
+pub mod parser;
 
-pub use parent_dir_fs::ParentDirFS;
 pub use dir_fs::{
     DirFS,
-    DirNoParentFS,
     DirFSInterface,
+};
+
+pub use file_fs::{
+    FileFS,
+    FileFSInterface,
 };
 
 pub trait VirtualFS: VirtualFile + Filesystem { }
@@ -48,7 +52,6 @@ pub const INODE_DIR_ID_SHIFT: u64 = 3;
 pub const INODE_DIR_ID_MASK: u64 = ((1 << INODE_DIR_TYPE_SHIFT) - 1) & !INODE_DIR_FILE_MASK;
 
 pub const INODE_DIR_FILE_MASK: u64 = (1 << INODE_DIR_ID_SHIFT) - 1;
-pub const INODE_DIR_FILE_MAX: u64 = 1 << INODE_DIR_ID_SHIFT;
 
 /// Known INodes
 pub const ROOT_DIR_INODE: u64 = ROOT_INODE_DIR_TYPE | 1;

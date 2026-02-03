@@ -8,8 +8,8 @@ pub struct CgroupManager {
 }
 
 pub struct Reservation {
-    runtime_us: u64,
-    period_us: u64,
+    pub runtime_us: u64,
+    pub period_us: u64,
 }
 
 impl CgroupManager {
@@ -49,6 +49,10 @@ impl CgroupManager {
         self.cgroups.remove(name);
 
         Ok(())
+    }
+
+    pub fn is_managed_cgroup(&self, name: &str) -> bool {
+        self.cgroups.contains(name)
     }
 
     fn run_admission_test(&self, request: &Reservation) -> anyhow::Result<bool> {

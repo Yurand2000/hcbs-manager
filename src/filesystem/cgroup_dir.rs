@@ -10,55 +10,55 @@ use update_cgroup_file::*;
 use delete_cgroup_file::*;
 
 #[derive(Debug)]
-pub struct CgroupDirFS<'a> {
-    cgroup_manager: &'a mut crate::manager::CgroupManager,
+pub struct CgroupDirFS<'a: 'b, 'b> {
+    root_fs: &'b mut super::RootFS<'a>,
 }
 
-impl<'a> CgroupDirFS<'a> {
+impl<'a: 'b, 'b> CgroupDirFS<'a, 'b> {
     pub const NAME: &'static str = "cgroup";
 
-    pub fn new(
-        cgroup_manager: &'a mut crate::manager::CgroupManager,
-        parent_fs: ParentDirFS<'a>
-    ) -> DirFS<'a, Self> {
-        DirFS {
-            implementor: Self { cgroup_manager },
-            parent_fs,
-        }
+    pub fn new(root_fs: &'b mut super::RootFS<'a>) -> DirFS<Self> {
+        DirFS::new( Self { root_fs } )
+    }
+
+    fn cgroup_manager(&mut self) -> &mut crate::manager::CgroupManager {
+        self.root_fs.cgroup_manager
     }
 }
 
-impl DirFSInterface for CgroupDirFS<'_> {
-    fn fs_from_file_name<'a>(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
+impl DirFSInterface for CgroupDirFS<'_, '_> {
+    fn parent_attr(&self) -> Option<FileAttr> {
+        Some(self.root_fs.attr())
+    }
+
+    fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
         match name.to_str().unwrap() {
-            CreateCgroupFileFS::NAME => Some(Box::new(CreateCgroupFileFS { })),
-            DeleteCgroupFileFS::NAME => Some(Box::new(DeleteCgroupFileFS { })),
-            UpdateCgroupFileFS::NAME => Some(Box::new(UpdateCgroupFileFS { })),
+            CreateCgroupFileFS::NAME => Some(Box::new(CreateCgroupFileFS::new(self.cgroup_manager()))),
+            DeleteCgroupFileFS::NAME => Some(Box::new(DeleteCgroupFileFS::new(self.cgroup_manager()))),
+            UpdateCgroupFileFS::NAME => Some(Box::new(UpdateCgroupFileFS::new(self.cgroup_manager()))),
             _ => None,
         }
     }
 
-    fn fs_from_inode<'a>(&'a self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
+    fn fs_from_inode<'a>(&'a mut self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
         match inode {
-            CreateCgroupFileFS::INODE => Some(Box::new(CreateCgroupFileFS { })),
-            DeleteCgroupFileFS::INODE => Some(Box::new(DeleteCgroupFileFS { })),
-            UpdateCgroupFileFS::INODE => Some(Box::new(UpdateCgroupFileFS { })),
+            CreateCgroupFileFS::INODE => Some(Box::new(CreateCgroupFileFS::new(self.cgroup_manager()))),
+            DeleteCgroupFileFS::INODE => Some(Box::new(DeleteCgroupFileFS::new(self.cgroup_manager()))),
+            UpdateCgroupFileFS::INODE => Some(Box::new(UpdateCgroupFileFS::new(self.cgroup_manager()))),
             _ => None,
         }
     }
 
-    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>> {
-        let files: [Box<dyn VirtualFS>; _] = [
-            Box::new(CreateCgroupFileFS { }),
-            Box::new(DeleteCgroupFileFS { }),
-            Box::new(UpdateCgroupFileFS { })
-        ];
-
-        files.into_iter()
+    fn fs_inodes_in_dir(&self) -> impl Iterator<Item = u64> {
+        [
+            CreateCgroupFileFS::INODE,
+            DeleteCgroupFileFS::INODE,
+            UpdateCgroupFileFS::INODE,
+        ].into_iter()
     }
 }
 
-impl VirtualFile for CgroupDirFS<'_> {
+impl VirtualFile for CgroupDirFS<'_, '_> {
     fn inode(&self) -> u64 {
         CGROUP_DIR_INODE
     }

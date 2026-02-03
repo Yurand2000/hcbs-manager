@@ -1,24 +1,31 @@
 use fuser::*;
 use crate::filesystem::utils::*;
 
-#[derive(Debug, Clone)]
-pub struct UpdateCgroupFileFS {
-
+#[derive(Debug)]
+pub struct UpdateCgroupFileFS<'a> {
+    cgroup_manager: &'a mut crate::manager::CgroupManager,
 }
 
-impl UpdateCgroupFileFS {
+impl<'a> UpdateCgroupFileFS<'a> {
     pub const NAME: &'static str = "update";
     pub const INODE: u64 = CGROUP_DIR_INODE + 3;
 
+    pub fn new(cgroup_manager: &'a mut crate::manager::CgroupManager) -> FileFS<Self> {
+        FileFS::new( Self { cgroup_manager } )
+    }
 }
 
-impl VirtualFS for UpdateCgroupFileFS { }
+impl FileFSInterface for UpdateCgroupFileFS<'_> {
+    fn read_size(&self) -> anyhow::Result<usize> { anyhow::bail!("Cannot read from UpdateCgroupFile") }
 
-impl Filesystem for UpdateCgroupFileFS {
+    fn read_data(&self) -> anyhow::Result<&str> { anyhow::bail!("Cannot read from UpdateCgroupFile") }
 
+    fn write_data(&mut self, _: &str) -> anyhow::Result<()> {
+        anyhow::bail!("Cannot write to UpdateCgroupFile")
+    }
 }
 
-impl VirtualFile for UpdateCgroupFileFS {
+impl VirtualFile for UpdateCgroupFileFS<'_> {
     fn inode(&self) -> u64 {
         Self::INODE
     }

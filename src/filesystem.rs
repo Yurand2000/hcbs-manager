@@ -120,40 +120,40 @@ impl<'a> RootFS<'a> {
     pub fn new(
         active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
         cgroup_manager: &'a mut crate::manager::CgroupManager,
-    ) -> DirNoParentFS<Self> {
-        DirNoParentFS { implementor: Self { active_procs, cgroup_manager } }
+    ) -> DirFS<Self> {
+        DirFS::new( Self { active_procs, cgroup_manager } )
     }
 }
 
 impl DirFSInterface for RootFS<'_> {
-    fn fs_from_file_name<'a>(&'a self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
+    fn parent_attr(&self) -> Option<FileAttr> { None }
+
+    fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
         match name.to_str().unwrap() {
-            ProcDirFS::NAME => Some(Box::new(ProcDirFS::new(self.active_procs, ParentDirFS::new(self)))),
-            CgroupDirFS::NAME => Some(Box::new(CgroupDirFS::new(self.cgroup_manager, ParentDirFS::new(self)))),
+            ProcDirFS::NAME => Some(Box::new(ProcDirFS::new(self))),
+            CgroupDirFS::NAME => Some(Box::new(CgroupDirFS::new(self))),
             _ => None,
         }
     }
 
-    fn fs_from_inode<'a>(&'a self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
+    fn fs_from_inode<'a>(&'a mut self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
         match inode & INODE_DIR_TYPE_MASK {
             ROOT_DIR_INODE => match inode & INODE_DIR_FILE_MASK {
                 0 => panic!("inode zero"),
                 1 => panic!("recursion"),
                 _ => None,
             },
-            PROC_DIR_INODE => Some(Box::new(ProcDirFS::new(self.active_procs, ParentDirFS::new(self)))),
-            CGROUP_DIR_INODE => Some(Box::new(CgroupDirFS::new(ParentDirFS::new(self)))),
+            PROC_DIR_INODE => Some(Box::new(ProcDirFS::new(self))),
+            CGROUP_DIR_INODE => Some(Box::new(CgroupDirFS::new(self))),
             _ => None,
         }
     }
 
-    fn readdir_files<'a>(&'a self) -> impl Iterator<Item = Box<dyn VirtualFS + 'a>> {
-        let files: [Box<dyn VirtualFS>; _] = [
-            Box::new(ProcDirFS::new(self.active_procs, ParentDirFS::new(self))),
-            Box::new(CgroupDirFS::new(ParentDirFS::new(self))),
-        ];
-
-        files.into_iter()
+    fn fs_inodes_in_dir(&self) -> impl Iterator<Item = u64> {
+        [
+            PROC_DIR_INODE,
+            CGROUP_DIR_INODE,
+        ].into_iter()
     }
 }
 

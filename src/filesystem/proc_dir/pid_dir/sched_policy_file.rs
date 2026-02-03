@@ -1,37 +1,113 @@
 use fuser::*;
+use hcbs_utils::prelude::*;
+use nom::sequence::delimited;
 use crate::filesystem::utils::*;
 use crate::ProcessStats;
 
 pub struct SchedPolicyFileFS<'a> {
-    pub pid: sysinfo::Pid,
-    pub stats: &'a ProcessStats,
+    pid: sysinfo::Pid,
+    stats: &'a ProcessStats,
+    cgroup_manager: &'a crate::manager::CgroupManager,
+    policy: Option<(SchedPolicy, String)>,
 }
 
-impl SchedPolicyFileFS<'_> {
+impl<'a> SchedPolicyFileFS<'a> {
     pub const NAME: &'static str = "sched_policy";
     pub const INODE_OFFSET: u64 = 3;
+
+    pub fn new(pid_dir_fs: &'a super::PidDirFS) -> FileFS<Self> {
+        let policy = get_sched_policy(pid_dir_fs.pid.as_u32())
+            .map(|policy| {
+                use SchedPolicy::*;
+
+                let str = match policy {
+                    OTHER { .. } => format!("SCHED_OTHER\n"),
+                    BATCH { .. } => format!("SCHED_BATCH\n"),
+                    IDLE => format!("SCHED_IDLE\n"),
+                    FIFO(prio) => format!("SCHED_FIFO({prio})\n"),
+                    RR(prio) => format!("SCHED_RR({prio})\n"),
+                    DEADLINE { .. } => format!("SCHED_DEADLINE\n"),
+                };
+
+                (policy, str)
+            }).ok();
+
+        FileFS::new( Self { pid: pid_dir_fs.pid, stats: pid_dir_fs.stats, cgroup_manager: pid_dir_fs.cgroup_manager, policy } )
+    }
+
+    fn parse_request(data: &str) -> Option<SchedPolicy> {
+        use nom::Parser as _;
+        use nom::branch::*;
+        use nom::bytes::complete::*;
+        use nom::combinator::*;
+
+        alt((
+            value(
+                SchedPolicy::other(),
+                tag("SCHED_OTHER"),
+            ),
+            map_res(
+                (
+                    tag("SCHED_FIFO"),
+                    delimited(
+                        tag("("),
+                        crate::filesystem::utils::
+                            parser::parse_u64,
+                        tag(")")
+                    )
+                ),
+                |(_, prio)| prio.try_into().map(|prio| SchedPolicy::FIFO(prio))
+            ),
+            map_res(
+                (
+                    tag("SCHED_RR"),
+                    delimited(
+                        tag("("),
+                        crate::filesystem::utils::
+                            parser::parse_u64,
+                        tag(")")
+                    )
+                ),
+                |(_, prio)| prio.try_into().map(|prio| SchedPolicy::RR(prio))
+            )
+        )).parse(data).map(|(_, policy)| policy).ok()
+    }
 }
 
-impl VirtualFS for SchedPolicyFileFS<'_> { }
+impl FileFSInterface for SchedPolicyFileFS<'_> {
+    fn read_size(&self) -> anyhow::Result<usize> {
+        let Some((_, str)) = &self.policy
+            else { anyhow::bail!("SchedPolicy not found") };
 
-impl Filesystem for SchedPolicyFileFS<'_> {
-    fn lookup(&mut self, _req: &Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: ReplyEntry) {
-        reply.entry(&DEFAULT_TTL, &self.attr(), 0);
+        Ok(str.len())
     }
 
-    fn getattr(&mut self, _req: &Request<'_>, _ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
-        reply.attr(&DEFAULT_TTL, &self.attr());
+    fn read_data(&self) -> anyhow::Result<&str> {
+        let Some((_, str)) = &self.policy
+            else { anyhow::bail!("SchedPolicy not found") };
+
+        Ok(str.as_str())
     }
 
-    fn readdir(
-            &mut self,
-            _req: &Request<'_>,
-            _ino: u64,
-            _fh: u64,
-            _offset: i64,
-            reply: ReplyDirectory,
-        ) {
-        reply.error(libc::ENOTDIR);
+    fn write_data(&mut self, data: &str) -> anyhow::Result<()> {
+        let Some(policy) = Self::parse_request(data)
+            else { anyhow::bail!("Invalid request"); };
+
+        match policy {
+            SchedPolicy::OTHER { .. } => (),
+            SchedPolicy::FIFO(_) | SchedPolicy::RR(_) => {
+                let cgroup = get_pid_cgroup(self.pid.as_u32())?;
+
+                if !self.cgroup_manager.is_managed_cgroup(&cgroup) {
+                    anyhow::bail!("Invalid request");
+                }
+            },
+            _ => anyhow::bail!("unexpected"),
+        }
+
+        set_sched_policy(self.pid.as_u32(), policy)?;
+
+        Ok(())
     }
 }
 
@@ -41,10 +117,8 @@ impl VirtualFile for SchedPolicyFileFS<'_> {
     }
 
     fn attr(&self) -> FileAttr {
-        let inode = pid_to_dir_inode(self.pid);
-
         FileAttr {
-            ino: inode + Self::INODE_OFFSET,
+            ino: self.inode(),
             size: 0,
             blocks: 0,
             atime: self.stats.crtime,
