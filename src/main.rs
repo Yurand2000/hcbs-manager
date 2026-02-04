@@ -13,6 +13,12 @@ struct Args {
     /// were into before being moved around by commands.
     #[arg(short='e')]
     reset_on_exit: bool,
+
+    /// Log level
+    ///
+    /// Available values: "off", "error", "warn", "info", "debug", "trace"
+    #[arg(long="log-level", default_value="warn")]
+    log_level: log::LevelFilter,
 }
 
 struct ResetData {
@@ -20,10 +26,12 @@ struct ResetData {
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = clap::Parser::parse();
+    let args: Args = clap::Parser::parse();
 
     // Debug Logging
-    env_logger::init();
+    env_logger::builder()
+        .filter_level(args.log_level)
+        .init();
 
     // Setup HCBS
     let reset_data = setup_hcbs(&args)?;
