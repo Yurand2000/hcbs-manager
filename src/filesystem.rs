@@ -10,125 +10,57 @@ mod utils;
 use proc_dir::*;
 use cgroup_dir::*;
 
-impl Filesystem for super::HCBSController {
+impl Filesystem for super::Controller {
     fn lookup(&mut self, _req: &Request<'_>, parent: u64, name: &std::ffi::OsStr, reply: ReplyEntry) {
-        self.update_active_processes();
-
-        RootFS::new(&self.active_procs, &mut self.cgroup_manager)
+        RootFS::new(self)
             .lookup(_req, parent, name, reply);
     }
 
     fn getattr(&mut self, _req: &Request<'_>, ino: u64, fh: Option<u64>, reply: ReplyAttr) {
-        self.update_active_processes();
-
-        RootFS::new(&self.active_procs, &mut self.cgroup_manager)
+        RootFS::new(self)
             .getattr(_req, ino, fh, reply);
     }
 
-    fn setattr(
-            &mut self,
-            _req: &Request<'_>,
-            ino: u64,
-            mode: Option<u32>,
-            uid: Option<u32>,
-            gid: Option<u32>,
-            size: Option<u64>,
-            _atime: Option<TimeOrNow>,
-            _mtime: Option<TimeOrNow>,
-            _ctime: Option<std::time::SystemTime>,
-            fh: Option<u64>,
-            _crtime: Option<std::time::SystemTime>,
-            _chgtime: Option<std::time::SystemTime>,
-            _bkuptime: Option<std::time::SystemTime>,
-            flags: Option<u32>,
-            reply: ReplyAttr,
-        ) {
-        self.update_active_processes();
-
-        RootFS::new(&self.active_procs, &mut self.cgroup_manager)
+    fn setattr(&mut self, _req: &Request<'_>, ino: u64, mode: Option<u32>, uid: Option<u32>, gid: Option<u32>, size: Option<u64>, _atime: Option<TimeOrNow>, _mtime: Option<TimeOrNow>, _ctime: Option<std::time::SystemTime>, fh: Option<u64>, _crtime: Option<std::time::SystemTime>, _chgtime: Option<std::time::SystemTime>, _bkuptime: Option<std::time::SystemTime>, flags: Option<u32>, reply: ReplyAttr) {
+        RootFS::new(self)
             .setattr(_req, ino, mode, uid, gid, size, _atime, _mtime, _ctime, fh, _crtime, _chgtime, _bkuptime, flags, reply);
     }
 
-    fn read(
-        &mut self,
-        _req: &Request<'_>,
-        ino: u64,
-        fh: u64,
-        offset: i64,
-        size: u32,
-        flags: i32,
-        lock_owner: Option<u64>,
-        reply: ReplyData,
-    ) {
-        self.update_active_processes();
-
-        RootFS::new(&self.active_procs, &mut self.cgroup_manager)
+    fn read(&mut self, _req: &Request<'_>, ino: u64, fh: u64, offset: i64, size: u32, flags: i32, lock_owner: Option<u64>, reply: ReplyData) {
+        RootFS::new(self)
             .read(_req, ino, fh, offset, size, flags, lock_owner, reply);
     }
 
-    fn write(
-        &mut self,
-        _req: &Request<'_>,
-        ino: u64,
-        fh: u64,
-        offset: i64,
-        data: &[u8],
-        write_flags: u32,
-        flags: i32,
-        lock_owner: Option<u64>,
-        reply: ReplyWrite,
-    ) {
-        self.update_active_processes();
-
-        RootFS::new(&self.active_procs, &mut self.cgroup_manager)
+    fn write(&mut self, _req: &Request<'_>, ino: u64, fh: u64, offset: i64, data: &[u8], write_flags: u32, flags: i32, lock_owner: Option<u64>, reply: ReplyWrite) {
+        RootFS::new(self)
             .write(_req, ino, fh, offset, data, write_flags, flags, lock_owner, reply);
     }
 
-    fn readdir(
-            &mut self,
-            _req: &Request<'_>,
-            ino: u64,
-            fh: u64,
-            offset: i64,
-            reply: ReplyDirectory,
-        ) {
-        self.update_active_processes();
-
-        RootFS::new(&self.active_procs, &mut self.cgroup_manager)
+    fn readdir(&mut self, _req: &Request<'_>, ino: u64, fh: u64, offset: i64, reply: ReplyDirectory) {
+        RootFS::new(self)
             .readdir(_req, ino, fh, offset, reply);
-    }
-
-    fn getxattr(
-            &mut self,
-            _req: &Request<'_>,
-            _ino: u64,
-            _name: &std::ffi::OsStr,
-            _size: u32,
-            reply: ReplyXattr,
-        ) {
-        reply.error(libc::ENODATA);
     }
 }
 
 #[derive(Debug)]
 pub struct RootFS<'a> {
     active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
-    cgroup_manager: &'a mut crate::manager::CgroupManager,
+    manager: &'a mut crate::manager::HCBSManager,
 }
 
 impl<'a> RootFS<'a> {
-    pub fn new(
-        active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
-        cgroup_manager: &'a mut crate::manager::CgroupManager,
-    ) -> DirFS<Self> {
-        DirFS::new( Self { active_procs, cgroup_manager } )
+    pub fn new(controller: &'a mut super::Controller) -> DirFS<Self> {
+        DirFS::new( Self {
+            active_procs: controller.process_info.get_processes(),
+            manager: &mut controller.manager
+        } )
     }
 }
 
 impl DirFSInterface for RootFS<'_> {
     fn parent_attr(&self) -> Option<FileAttr> { None }
 
-    fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
+    fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>>{
         match name.to_str().unwrap() {
             ProcDirFS::NAME => Some(Box::new(ProcDirFS::new(self))),
             CgroupDirFS::NAME => Some(Box::new(CgroupDirFS::new(self))),

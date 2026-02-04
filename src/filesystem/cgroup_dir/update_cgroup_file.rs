@@ -1,17 +1,33 @@
 use fuser::*;
+use crate::manager::Reservation;
 use crate::filesystem::utils::*;
 
 #[derive(Debug)]
 pub struct UpdateCgroupFileFS<'a> {
-    cgroup_manager: &'a mut crate::manager::CgroupManager,
+    cgroup_manager: &'a mut crate::manager::HCBSManager,
 }
 
 impl<'a> UpdateCgroupFileFS<'a> {
     pub const NAME: &'static str = "update";
     pub const INODE: u64 = CGROUP_DIR_INODE + 3;
 
-    pub fn new(cgroup_manager: &'a mut crate::manager::CgroupManager) -> FileFS<Self> {
-        FileFS::new( Self { cgroup_manager } )
+    pub fn new(cgroup_dir_fs: &'a mut super::CgroupDirFS<'_>) -> FileFS<Self> {
+        FileFS::new( Self { cgroup_manager: cgroup_dir_fs.manager } )
+    }
+
+    fn parse_request(data: &str) -> Option<(&str, Reservation)> {
+        use nom::Parser as _;
+        use nom::character::complete::*;
+        use nom::combinator::*;
+
+        map(
+            (
+                crate::filesystem::utils::parser::parse_cgroup_name,
+                space1,
+                crate::filesystem::utils::parser::parse_cgroup_alloc_request,
+            ),
+            |(name, _, request)| (name, request)
+        ).parse(data).map(|(_, res)| res).ok()
     }
 }
 
@@ -20,8 +36,11 @@ impl FileFSInterface for UpdateCgroupFileFS<'_> {
 
     fn read_data(&self) -> anyhow::Result<&str> { anyhow::bail!("Cannot read from UpdateCgroupFile") }
 
-    fn write_data(&mut self, _: &str) -> anyhow::Result<()> {
-        anyhow::bail!("Cannot write to UpdateCgroupFile")
+    fn write_data(&mut self, data: &str) -> anyhow::Result<()> {
+        let Some((name, request)) = Self::parse_request(data)
+            else { anyhow::bail!("Invalid request"); };
+
+        self.cgroup_manager.update_cgroup(name, request)
     }
 }
 

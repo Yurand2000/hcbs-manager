@@ -3,15 +3,15 @@ use crate::filesystem::utils::*;
 
 #[derive(Debug)]
 pub struct DeleteCgroupFileFS<'a> {
-    cgroup_manager: &'a mut crate::manager::CgroupManager,
+    cgroup_manager: &'a mut crate::manager::HCBSManager,
 }
 
 impl<'a> DeleteCgroupFileFS<'a> {
     pub const NAME: &'static str = "delete";
     pub const INODE: u64 = CGROUP_DIR_INODE + 2;
 
-    pub fn new(cgroup_manager: &'a mut crate::manager::CgroupManager) -> FileFS<Self> {
-        FileFS::new( Self { cgroup_manager } )
+    pub fn new(cgroup_dir_fs: &'a mut super::CgroupDirFS<'_>) -> FileFS<Self> {
+        FileFS::new( Self { cgroup_manager: cgroup_dir_fs.manager } )
     }
 
     fn parse_request(data: &str) -> Option<&str> {

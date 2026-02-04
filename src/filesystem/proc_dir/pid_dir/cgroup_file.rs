@@ -7,17 +7,23 @@ pub struct CgroupFileFS<'a> {
     pid: sysinfo::Pid,
     stats: &'a ProcessStats,
     cgroup: Option<String>,
+    manager: &'a mut crate::manager::HCBSManager,
 }
 
 impl<'a> CgroupFileFS<'a> {
     pub const NAME: &'static str = "cgroup";
     pub const INODE_OFFSET: u64 = 2;
 
-    pub fn new(pid_dir_fs: &'a super::PidDirFS) -> FileFS<Self> {
+    pub fn new(pid_dir_fs: &'a mut super::PidDirFS<'_>) -> FileFS<Self> {
         let cgroup = get_pid_cgroup(pid_dir_fs.pid.as_u32())
                         .map(|mut str| { str += "\n"; str }).ok();
 
-        FileFS::new( Self { pid: pid_dir_fs.pid, stats: pid_dir_fs.stats, cgroup } )
+        FileFS::new(Self {
+            pid: pid_dir_fs.pid,
+            stats: pid_dir_fs.stats,
+            cgroup,
+            manager: pid_dir_fs.manager,
+        } )
     }
 
     fn parse_request(data: &str) -> Option<&str> {
@@ -43,11 +49,7 @@ impl FileFSInterface for CgroupFileFS<'_> {
         let Some(name) = Self::parse_request(data)
             else { anyhow::bail!("Invalid request"); };
 
-        if !get_sched_policy(self.pid.as_u32())?.is_other() {
-            return Err(anyhow::format_err!("Only SCHED_OTHER processes are allowed to migrate."))
-        }
-
-        assign_pid_to_cgroup(name, self.pid.as_u32())
+        self.manager.assign_cgroup_to_process(self.pid.as_u32(), name)
     }
 }
 

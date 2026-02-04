@@ -7,15 +7,15 @@ use crate::ProcessStats;
 pub struct SchedPolicyFileFS<'a> {
     pid: sysinfo::Pid,
     stats: &'a ProcessStats,
-    cgroup_manager: &'a crate::manager::CgroupManager,
     policy: Option<(SchedPolicy, String)>,
+    manager: &'a mut crate::manager::HCBSManager,
 }
 
 impl<'a> SchedPolicyFileFS<'a> {
     pub const NAME: &'static str = "sched_policy";
     pub const INODE_OFFSET: u64 = 3;
 
-    pub fn new(pid_dir_fs: &'a super::PidDirFS) -> FileFS<Self> {
+    pub fn new(pid_dir_fs: &'a mut super::PidDirFS<'_>) -> FileFS<Self> {
         let policy = get_sched_policy(pid_dir_fs.pid.as_u32())
             .map(|policy| {
                 use SchedPolicy::*;
@@ -32,7 +32,12 @@ impl<'a> SchedPolicyFileFS<'a> {
                 (policy, str)
             }).ok();
 
-        FileFS::new( Self { pid: pid_dir_fs.pid, stats: pid_dir_fs.stats, cgroup_manager: pid_dir_fs.cgroup_manager, policy } )
+        FileFS::new( Self {
+            pid: pid_dir_fs.pid,
+            stats: pid_dir_fs.stats,
+            policy,
+            manager: pid_dir_fs.manager,
+        } )
     }
 
     fn parse_request(data: &str) -> Option<SchedPolicy> {
@@ -93,21 +98,7 @@ impl FileFSInterface for SchedPolicyFileFS<'_> {
         let Some(policy) = Self::parse_request(data)
             else { anyhow::bail!("Invalid request"); };
 
-        match policy {
-            SchedPolicy::OTHER { .. } => (),
-            SchedPolicy::FIFO(_) | SchedPolicy::RR(_) => {
-                let cgroup = get_pid_cgroup(self.pid.as_u32())?;
-
-                if !self.cgroup_manager.is_managed_cgroup(&cgroup) {
-                    anyhow::bail!("Invalid request");
-                }
-            },
-            _ => anyhow::bail!("unexpected"),
-        }
-
-        set_sched_policy(self.pid.as_u32(), policy)?;
-
-        Ok(())
+        self.manager.set_process_sched_policy(self.pid.as_u32(), policy)
     }
 }
 

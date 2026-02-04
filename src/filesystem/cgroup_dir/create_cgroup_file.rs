@@ -3,15 +3,15 @@ use crate::{filesystem::utils::*, manager::Reservation};
 
 #[derive(Debug)]
 pub struct CreateCgroupFileFS<'a> {
-    cgroup_manager: &'a mut crate::manager::CgroupManager,
+    cgroup_manager: &'a mut crate::manager::HCBSManager,
 }
 
 impl<'a> CreateCgroupFileFS<'a> {
     pub const NAME: &'static str = "create";
     pub const INODE: u64 = CGROUP_DIR_INODE + 1;
 
-    pub fn new(cgroup_manager: &'a mut crate::manager::CgroupManager) -> FileFS<Self> {
-        FileFS::new( Self { cgroup_manager } )
+    pub fn new(cgroup_dir_fs: &'a mut super::CgroupDirFS<'_>) -> FileFS<Self> {
+        FileFS::new( Self { cgroup_manager: cgroup_dir_fs.manager } )
     }
 
     fn parse_request(data: &str) -> Option<(&str, Reservation)> {

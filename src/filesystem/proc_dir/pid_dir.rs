@@ -8,28 +8,56 @@ mod sched_policy_file;
 use cgroup_file::*;
 use sched_policy_file::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PidDirFS<'a> {
     pid: sysinfo::Pid,
     stats: &'a ProcessStats,
     name: String,
-    cgroup_manager: &'a crate::manager::CgroupManager,
-    proc_dir: &'a super::ProcDirFS<'a>,
+    manager: &'a mut crate::manager::HCBSManager,
+    proc_dir_attr: FileAttr,
 }
 
 impl<'a> PidDirFS<'a> {
-    pub fn new(
-        pid: sysinfo::Pid,
-        stats: &'a ProcessStats,
-        proc_dir: &'a super::ProcDirFS<'a>
-    ) -> DirFS<Self> {
-        DirFS::new( Self { pid, stats, name: format!("{}", pid), cgroup_manager: proc_dir.cgroup_manager, proc_dir } )
+    pub fn new_from_name(
+        proc_dir: &'a mut super::ProcDirFS<'_>,
+        name: &str,
+    ) -> Option<DirFS<Self>> {
+        let pid = sysinfo::Pid::from_u32(name.parse::<u32>().ok()?);
+        let stats = proc_dir.active_procs.get(&pid)?;
+
+        let proc_dir_attr = proc_dir.attr();
+
+        Some(DirFS::new(Self {
+            pid,
+            stats,
+            name: format!("{pid}"),
+            manager: proc_dir.manager,
+            proc_dir_attr: proc_dir_attr,
+        }))
+    }
+
+    pub fn new_from_inode(
+        proc_dir: &'a mut super::ProcDirFS<'_>,
+        inode: u64,
+    ) -> Option<DirFS<Self>> {
+        let pid = inode_to_pid_dir(inode)?;
+        let stats = proc_dir.active_procs.get(&pid)?;
+
+        let proc_dir_attr = proc_dir.attr();
+
+        Some(DirFS::new(Self {
+            pid,
+            stats,
+            name: format!("{pid}"),
+            manager: proc_dir.manager,
+            proc_dir_attr: proc_dir_attr,
+        }))
     }
 }
 
 impl DirFSInterface for PidDirFS<'_> {
     fn parent_attr(&self) -> Option<FileAttr> {
-        Some(self.proc_dir.attr())
+        Some(self.proc_dir_attr)
     }
 
     fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {

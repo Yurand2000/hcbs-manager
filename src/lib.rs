@@ -5,20 +5,19 @@ extern crate log;
 
 mod filesystem;
 mod manager;
+mod utils;
 
 pub mod prelude {
     pub use super::{
-        HCBSController,
+        Controller,
     };
 }
 
 #[derive(Debug)]
-pub struct HCBSController {
-    sysinfo: sysinfo::System,
+pub struct Controller {
     mountpoint: &'static str,
-    active_procs: HashMap<sysinfo::Pid, ProcessStats>,
-    cgroup_manager: manager::CgroupManager,
-    last_update: std::time::Instant,
+    manager: manager::HCBSManager,
+    process_info: ProcessInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -28,18 +27,15 @@ pub struct ProcessStats {
     crtime: std::time::SystemTime,
 }
 
-impl HCBSController {
-    pub fn new() -> Self {
-        let mut ctrl = Self {
-            sysinfo: sysinfo::System::new(),
-            mountpoint: "/hcbs-manager",
-            active_procs: HashMap::with_capacity(0),
-            cgroup_manager: manager::CgroupManager::new(),
-            last_update: std::time::Instant::now(),
-        };
+impl Controller {
+    const DEFAULT_MOUNT_POINT: &'static str = "/mnt/hcbs-manager";
 
-        ctrl.update_active_processes();
-        ctrl
+    pub fn new(reset_on_exit: bool) -> Self {
+        Self {
+            mountpoint: Self::DEFAULT_MOUNT_POINT,
+            manager: manager::HCBSManager::new(reset_on_exit),
+            process_info: ProcessInfo::new(),
+        }
     }
 
     pub fn mount(self) -> anyhow::Result<()> {
@@ -52,7 +48,7 @@ impl HCBSController {
                 .unwrap();
         })?;
 
-        std::fs::create_dir(mountpoint)?;
+        let _mountdir = utils::TempDir::new(mountpoint)?;
 
         fuser::mount2(
             self,
@@ -64,23 +60,44 @@ impl HCBSController {
                 fuser::MountOption::NoDev,
                 fuser::MountOption::NoSuid,
                 fuser::MountOption::RW,
-                fuser::MountOption::NoExec,
-                fuser::MountOption::Sync,
+                // fuser::MountOption::NoExec,
+                // fuser::MountOption::Sync,
             ]
         )?;
 
-        std::fs::remove_dir(mountpoint)?;
-
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ProcessInfo {
+    sysinfo: sysinfo::System,
+    active_procs: HashMap<sysinfo::Pid, ProcessStats>,
+    last_update: std::time::Instant,
+}
+
+impl ProcessInfo {
+    const UPDATE_DELTA: std::time::Duration = std::time::Duration::from_secs(1);
+
+    pub fn new() -> Self {
+        Self {
+            sysinfo: sysinfo::System::new(),
+            active_procs: HashMap::with_capacity(0),
+            last_update: std::time::Instant::now() - Self::UPDATE_DELTA * 2,
+        }
+    }
+
+    pub fn get_processes(&mut self) -> &mut HashMap<sysinfo::Pid, ProcessStats> {
+        self.update_active_processes();
+
+        &mut self.active_procs
     }
 
     fn update_active_processes(&mut self) {
         use sysinfo::*;
 
-        const UPDATE_DELTA: std::time::Duration = std::time::Duration::from_secs(1);
-
         let now = std::time::Instant::now();
-        if now - self.last_update <= UPDATE_DELTA {
+        if now - self.last_update <= Self::UPDATE_DELTA {
             return;
         }
 

@@ -7,9 +7,13 @@ pub fn parse_cgroup_name(data: &str) -> nom::IResult<&str, &str, ()> {
     use nom::multi::*;
 
     let folder_name_parser = ||
-        recognize((
-            alt((alpha1::<_, ()>, tag("_"))),
-            many0_count(alt((alphanumeric1, tag("_"))))
+        alt((
+            tag("."),
+            recognize((
+
+                alt((alpha1::<_, ()>, tag("_"))),
+                many0_count(alt((alphanumeric1, tag("_"))))
+            ))
         ));
 
     let name_parser = ||

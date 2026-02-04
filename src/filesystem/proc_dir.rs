@@ -1,5 +1,6 @@
-use fuser::*;
 use std::collections::HashMap;
+
+use fuser::*;
 use crate::ProcessStats;
 use crate::filesystem::utils::*;
 
@@ -7,53 +8,41 @@ mod pid_dir;
 
 use pid_dir::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProcDirFS<'a> {
     active_procs: &'a HashMap<sysinfo::Pid, ProcessStats>,
-    cgroup_manager: &'a crate::manager::CgroupManager,
-    root_fs: &'a super::RootFS<'a>,
+    manager: &'a mut crate::manager::HCBSManager,
+    root_fs_attr: FileAttr,
 }
 
 impl<'a> ProcDirFS<'a> {
     pub const NAME: &'static str = "proc";
 
-    pub fn new(root_fs: &'a super::RootFS) -> DirFS<Self> {
-        DirFS::new( Self { root_fs, active_procs: root_fs.active_procs, cgroup_manager: root_fs.cgroup_manager } )
-    }
+    pub fn new(root_fs: &'a mut super::RootFS<'_>) -> DirFS<Self> {
+        let root_fs_attr = root_fs.attr();
 
-    fn process_from_name(&'a self, name: &str) -> Option<(sysinfo::Pid, &'a ProcessStats)> {
-        let pid = sysinfo::Pid::from_u32(name.parse::<u32>().ok()?);
-        let stats = self.active_procs.get(&pid)?;
-
-        Some((pid, stats))
-    }
-
-    fn process_from_inode(&'a self, inode: u64) -> Option<(sysinfo::Pid, &'a ProcessStats)> {
-        let pid = inode_to_pid_dir(inode)?;
-        let stats = self.active_procs.get(&pid)?;
-
-        Some((pid, stats))
+        DirFS::new( Self {
+            active_procs: root_fs.active_procs,
+            manager: root_fs.manager,
+            root_fs_attr,
+        } )
     }
 }
 
 impl DirFSInterface for ProcDirFS<'_> {
     fn parent_attr(&self) -> Option<FileAttr> {
-        Some(self.root_fs.attr())
+        Some(self.root_fs_attr)
     }
 
     fn fs_from_file_name<'a>(&'a mut self, name: &std::ffi::OsStr) -> Option<Box<dyn VirtualFS + 'a>> {
-        self.process_from_name(name.to_str().unwrap())
-            .map(|(pid, stats)| -> Box<dyn VirtualFS> {
-                Box::new(PidDirFS::new(pid, stats, self))
-            })
+        PidDirFS::new_from_name(self, name.to_str().unwrap())
+            .map(|fs| -> Box<dyn VirtualFS + 'a> { Box::new(fs) })
     }
 
     fn fs_from_inode<'a>(&'a mut self, inode: u64) -> Option<Box<dyn VirtualFS + 'a>> {
         if inode != PROC_DIR_INODE {
-            self.process_from_inode(inode)
-                .map(|(pid, stats)| -> Box<dyn VirtualFS + 'a> {
-                    Box::new(PidDirFS::new(pid, stats, self))
-                })
+            PidDirFS::new_from_inode(self, inode)
+                .map(|fs| -> Box<dyn VirtualFS + 'a> { Box::new(fs) })
         } else {
             match inode & INODE_DIR_FILE_MASK {
                 0 => panic!("recursion"),
@@ -68,7 +57,7 @@ impl DirFSInterface for ProcDirFS<'_> {
     }
 }
 
-impl<'a> VirtualFile for ProcDirFS<'a> {
+impl VirtualFile for ProcDirFS<'_> {
     fn inode(&self) -> u64 {
         PROC_DIR_INODE
     }
