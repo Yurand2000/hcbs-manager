@@ -35,11 +35,11 @@ impl ProcManager {
             anyhow::bail!("Cgroup \"{cgroup}\" is not managed by this controller.");
         }
 
-        self.get_managed_process(pid)?;
-
         if !get_sched_policy(pid)?.is_other() {
             anyhow::bail!("Only SCHED_OTHER processes are allowed to be moved between cgroups.");
         }
+
+        self.get_managed_process(pid)?;
 
         assign_pid_to_cgroup(cgroup, pid)?;
 
@@ -47,8 +47,6 @@ impl ProcManager {
     }
 
     pub fn set_process_sched_policy(&mut self, cgroups: &super::CgroupManager, pid: Pid, policy: SchedPolicy) -> anyhow::Result<()> {
-        self.get_managed_process(pid)?;
-
         match policy {
             SchedPolicy::OTHER { .. } => (),
             SchedPolicy::FIFO(_) | SchedPolicy::RR(_) => {
@@ -60,6 +58,8 @@ impl ProcManager {
             },
             _ => anyhow::bail!("unexpected"),
         }
+
+        self.get_managed_process(pid)?;
 
         set_sched_policy(pid, policy)?;
 
