@@ -23,11 +23,11 @@ impl CgroupManager {
 
     pub fn create_cgroup(&mut self, name: &str, request: Reservation) -> anyhow::Result<()> {
         if self.cgroups.contains(name) {
-            return Err(anyhow::format_err!("Cgroup {} already exists.", cgroup_abs_path(name)));
+            anyhow::bail!("Cgroup {} already exists.", cgroup_abs_path(name));
         }
 
         if !self.run_admission_test(&request)? {
-            return Err(anyhow::format_err!("Cgroup {} cannot be allocated: insufficient resources.", cgroup_abs_path(name)));
+            anyhow::bail!("Cgroup {} cannot be allocated: insufficient resources.", cgroup_abs_path(name));
         }
 
         Cgroup::create(name, request)
@@ -77,11 +77,19 @@ impl CgroupManager {
     }
 }
 
+impl Default for CgroupManager {
+    fn default() -> Self {
+        Self {
+            cgroups: HashSet::with_capacity(0)
+        }
+    }
+}
+
 impl Drop for CgroupManager {
     fn drop(&mut self) {
         for name in self.cgroups.iter() {
             if let Err(err) = Cgroup::force_destroy(name) {
-                error!("Error in destructig cgroup \"{name}\": {err}");
+                error!("Error in destroying cgroup \"{name}\": {err}");
             }
         };
     }

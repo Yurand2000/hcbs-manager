@@ -5,7 +5,7 @@ use hcbs_utils::prelude::*;
 #[derive(Debug)]
 pub struct ProcManager {
     procs: HashMap<Pid, ProcData>,
-    reset_on_exit: bool,
+    keep_on_exit: bool,
 }
 
 #[derive(Debug)]
@@ -14,8 +14,16 @@ pub struct ProcData {
 }
 
 impl ProcManager {
-    pub fn new(reset_on_exit: bool) -> Self {
-        Self { procs: HashMap::new(), reset_on_exit }
+    pub fn new(keep_on_exit: bool) -> Self {
+        Self { procs: HashMap::new(), keep_on_exit }
+    }
+
+    pub fn update_managed_processes<I>(&mut self, dead_procs: I)
+        where I: Iterator<Item = Pid>,
+    {
+        for proc in dead_procs {
+            self.procs.remove(&proc);
+        }
     }
 
     pub fn assign_cgroup_to_process(&mut self, cgroups: &super::CgroupManager, pid: Pid, cgroup: &str) -> anyhow::Result<()> {
@@ -68,9 +76,18 @@ impl ProcManager {
     }
 }
 
+impl Default for ProcManager {
+    fn default() -> Self {
+        Self {
+            procs: HashMap::with_capacity(0),
+            keep_on_exit: false,
+        }
+    }
+}
+
 impl Drop for ProcManager {
     fn drop(&mut self) {
-        if !self.reset_on_exit {
+        if !self.keep_on_exit {
             return;
         }
 
@@ -83,6 +100,8 @@ impl Drop for ProcManager {
                 error!("Couldn't move PID {pid} to its original cgroup: {err}");
             }
         }
+
+        self.procs.clear();
     }
 }
 

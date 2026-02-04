@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use hcbs_utils::prelude::*;
+
 #[macro_use]
 extern crate log;
 
@@ -30,10 +32,10 @@ pub struct ProcessStats {
 impl Controller {
     const DEFAULT_MOUNT_POINT: &'static str = "/mnt/hcbs-manager";
 
-    pub fn new(reset_on_exit: bool) -> Self {
+    pub fn new(keep_on_exit: bool) -> Self {
         Self {
             mountpoint: Self::DEFAULT_MOUNT_POINT,
-            manager: manager::HCBSManager::new(reset_on_exit),
+            manager: manager::HCBSManager::new(keep_on_exit),
             process_info: ProcessInfo::new(),
         }
     }
@@ -60,12 +62,16 @@ impl Controller {
                 fuser::MountOption::NoDev,
                 fuser::MountOption::NoSuid,
                 fuser::MountOption::RW,
-                // fuser::MountOption::NoExec,
-                // fuser::MountOption::Sync,
             ]
         )?;
 
         Ok(())
+    }
+
+    pub fn update(&mut self) {
+        let dead = self.process_info.update_active_processes();
+
+        self.manager.update_managed_processes(dead);
     }
 }
 
@@ -87,18 +93,12 @@ impl ProcessInfo {
         }
     }
 
-    pub fn get_processes(&mut self) -> &mut HashMap<sysinfo::Pid, ProcessStats> {
-        self.update_active_processes();
-
-        &mut self.active_procs
-    }
-
-    fn update_active_processes(&mut self) {
+    fn update_active_processes(&mut self) -> Box<dyn Iterator<Item = Pid> + '_> {
         use sysinfo::*;
 
         let now = std::time::Instant::now();
         if now - self.last_update <= Self::UPDATE_DELTA {
-            return;
+            return Box::new(std::iter::empty());
         }
 
         self.sysinfo.refresh_processes_specifics(
@@ -107,9 +107,12 @@ impl ProcessInfo {
             ProcessRefreshKind::nothing()
                 .with_user(UpdateKind::Always));
 
-        self.active_procs =
+        let (alive, dead): (Vec<_>, Vec<_>) =
             self.sysinfo.processes().iter()
-                .filter(|(_, p)| p.exists())
+                .partition(|(_, p)| p.exists());
+
+        self.active_procs =
+                alive.into_iter()
                 .map(|(_, p)|
                 (p.pid(), ProcessStats {
                     uid: p.user_id().unwrap().clone(),
@@ -119,5 +122,7 @@ impl ProcessInfo {
                 .collect();
 
         self.last_update = std::time::Instant::now();
+
+        Box::new(dead.into_iter().map(|(pid, _)| pid.as_u32()))
     }
 }

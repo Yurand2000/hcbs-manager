@@ -3,7 +3,7 @@ use hcbs_manager::prelude::*;
 #[derive(Debug, clap::Parser)]
 struct Args {
     /// Max bandwidth of the Cgroup hierarchy
-    #[arg(short='b', long="bandwidth", default_value="0.95")]
+    #[arg(short='b', long="bandwidth", default_value="0.9")]
     runtime_bw: f64,
 
     /// Reset changes on exit
@@ -23,9 +23,7 @@ fn main() -> anyhow::Result<()> {
     let args = clap::Parser::parse();
 
     // Debug Logging
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
-        .init();
+    env_logger::init();
 
     // Setup HCBS
     let reset_data = setup_hcbs(&args)?;

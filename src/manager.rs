@@ -15,11 +15,17 @@ pub struct HCBSManager {
 }
 
 impl HCBSManager {
-    pub fn new(reset_on_exit: bool) -> Self {
+    pub fn new(keep_on_exit: bool) -> Self {
         Self {
             cgroups: CgroupManager::new(),
-            procs: ProcManager::new(reset_on_exit),
+            procs: ProcManager::new(keep_on_exit),
         }
+    }
+
+    pub fn update_managed_processes<I>(&mut self, dead_procs: I)
+        where I: Iterator<Item = Pid>
+    {
+        self.procs.update_managed_processes(dead_procs);
     }
 
     pub fn create_cgroup(&mut self, name: &str, request: Reservation) -> anyhow::Result<()> {
@@ -44,5 +50,12 @@ impl HCBSManager {
 
     pub fn set_process_sched_policy(&mut self, pid: Pid, policy: SchedPolicy) -> anyhow::Result<()> {
         self.procs.set_process_sched_policy(&self.cgroups, pid, policy)
+    }
+}
+
+impl Drop for HCBSManager {
+    fn drop(&mut self) {
+        std::mem::take(&mut self.procs);
+        std::mem::take(&mut self.cgroups);
     }
 }

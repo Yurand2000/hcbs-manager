@@ -50,8 +50,10 @@ pub struct RootFS<'a> {
 
 impl<'a> RootFS<'a> {
     pub fn new(controller: &'a mut super::Controller) -> DirFS<Self> {
+        controller.update();
+
         DirFS::new( Self {
-            active_procs: controller.process_info.get_processes(),
+            active_procs: &controller.process_info.active_procs,
             manager: &mut controller.manager
         } )
     }
