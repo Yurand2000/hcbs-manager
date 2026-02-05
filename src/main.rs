@@ -108,9 +108,8 @@ fn setup_realtime_system() -> anyhow::Result<RealtimeResetData> {
     intel::set_pstate(intel::PState::fix_performance())?;
     for &cpu in cpus.iter() {
         let freqs = get_cpu_frequency(cpu)?;
-        let avg_frequency = (freqs.min_frequency_mhz + freqs.max_frequency_mhz) / 2;
 
-        set_cpu_frequency_governor(cpu, CpuFrequencyGovernorData::fixed_frequency(avg_frequency))?;
+        set_cpu_frequency_governor(cpu, CpuFrequencyGovernorData::fixed_frequency(freqs.max_frequency_mhz))?;
     }
     for &cpu in cpus.iter() {
         let cpu = cpu as u32;
