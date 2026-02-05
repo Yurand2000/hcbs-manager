@@ -30,12 +30,19 @@ fn main() -> anyhow::Result<()> {
         .filter_level(args.log_level)
         .init();
 
+    // Set manager to run on real-time scheduling policy
+    assign_pid_to_cgroup(ROOT_CGROUP, 0)?;
+    set_sched_policy(0, SchedPolicy::FIFO(99))?;
+
+    // Setup System for Real-Time workloads
     setup_reset_helper(
         setup_realtime_system,
         reset_realtime_system,
+        // Setup HCBS Hierarchy
         || setup_reset_helper(
             || setup_hcbs(&args),
             |data| reset_hcbs(&args, data),
+            // Start HCBS Manager
             || {
                 Controller::new(
                     args.reset_on_exit
@@ -102,7 +109,9 @@ fn setup_realtime_system() -> anyhow::Result<RealtimeResetData> {
         .collect::<anyhow::Result<_>>()?;
 
     // Set Real-Time system state
-    disable_hyperthreading()?;
+    if hyperthreading_enabled {
+        disable_hyperthreading()?;
+    }
         // refresh CPUs as disabling hyperthreading switches off some logical cores.
     let cpus = CpuSet::all()?;
     intel::set_pstate(intel::PState::fix_performance())?;
