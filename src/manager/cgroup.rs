@@ -109,6 +109,11 @@ impl Cgroup {
     }
 
     pub fn destroy(name: &str) -> anyhow::Result<()> {
+        if cgroup_num_procs(name)? > 0 {
+            error!("Cannot destroy cgroup \"{name}\": cgroup has active processes");
+            anyhow::bail!("Cannot destroy cgroup \"{name}\": cgroup has active processes");
+        }
+
         set_cgroup_runtime_us(name, 0)?;
 
         delete_cgroup(name)?;
