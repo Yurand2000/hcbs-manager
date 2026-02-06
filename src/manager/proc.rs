@@ -31,7 +31,7 @@ impl ProcManager {
             anyhow::bail!("Cgroup \"{cgroup}\" does not exist");
         }
 
-        if !cgroups.is_managed_cgroup(cgroup) {
+        if !cgroups.is_managed_cgroup(cgroup) && cgroup != ROOT_CGROUP {
             anyhow::bail!("Cgroup \"{cgroup}\" is not managed by this controller.");
         }
 
